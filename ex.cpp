@@ -2,308 +2,251 @@
 #include <vector>
 #include <string>
 #include <algorithm>
+#include <memory> // Для smart pointers (керування пам'яттю)
 
 using namespace std;
 
-enum Role { CLIENT, TRAINER, ADMIN };
+// --- Абстракції та Інтерфейси (DIP - Dependency Inversion Principle) ---
 
-struct Date {
-    int day, month, year;
-    
-    string toString() const {
-        return to_string(day) + "/" + to_string(month) + "/" + to_string(year);
-    }
-};
-
-class Membership {
-private:
-    string type;
-    Date expiryDate;
-    bool isActive;
-
+/**
+ * @brief Інтерфейс для отримання сповіщень (Pattern: Observer)
+ * Дозволяє будь-якому об'єкту отримувати повідомлення від системи.
+ */
+class INotifiable {
 public:
-    Membership() : isActive(false), expiryDate({0,0,0}) {}
-
-    bool getIsActive() const { return isActive; }
-    
-    void activate(string newType, Date newExpiry) {
-        type = newType;
-        expiryDate = newExpiry;
-        isActive = true;
-        cout << "   [System]: Membership '" << type << "' activated until " << expiryDate.toString() << endl;
-    }
-
-    void suspend() {
-        if (isActive) {
-            isActive = false;
-            cout << "   [System]: Membership suspended." << endl;
-        }
-    }
+    virtual ~INotifiable() = default;
+    virtual void update(const string& message) = 0;
 };
 
-class User {
+/**
+ * @brief Абстрактний базовий клас Користувача.
+ * Відповідає тільки за базові дані та ідентифікацію (SRP).
+ */
+class User : public INotifiable {
 protected:
     int id;
     string name;
     string email;
     string password;
-    Role role;
-    string phone;
 
 public:
-    User(int id, string name, string email, string password, Role role, string phone)
-        : id(id), name(name), email(email), password(password), role(role), phone(phone) {}
+    User(int id, string name, string email, string password)
+        : id(id), name(name), email(email), password(password) {}
 
-    virtual ~User() {}
+    virtual ~User() = default;
 
     int getId() const { return id; }
-    string getName() const { return name; }
     string getEmail() const { return email; }
-    Role getRole() const { return role; }
-
-    bool checkPassword(string inputPassword) const {
-        return password == inputPassword;
+    string getName() const { return name; }
+    
+    bool verifyPassword(const string& inputPass) const {
+        return password == inputPass;
     }
 
-    virtual void printRole() const {
-        cout << "User";
+    // Реалізація методу Observer
+    void update(const string& message) override {
+        cout << "[Notification for " << name << "]: " << message << endl;
     }
+
+    // Абстрактний метод для отримання ролі (поліморфізм)
+    virtual string getRoleName() const = 0;
 };
+
+// --- Конкретні реалізації (LSP - Liskov Substitution Principle) ---
 
 class Client : public User {
 public:
-    Membership membership;
-
-    Client(int id, string name, string email, string password, string phone)
-        : User(id, name, email, password, CLIENT, phone) {}
-
-    void printRole() const override { cout << "Client"; }
+    Client(int id, string n, string e, string p) : User(id, n, e, p) {}
+    
+    string getRoleName() const override { return "Client"; }
+    
+    // Специфічний метод клієнта
+    void buyMembership(const string& type) {
+        // Логіка покупки...
+        update("You have successfully purchased " + type + " membership.");
+    }
 };
 
 class Trainer : public User {
 public:
-    Trainer(int id, string name, string email, string password, string phone)
-        : User(id, name, email, password, TRAINER, phone) {}
-
-    void printRole() const override { cout << "Trainer"; }
+    Trainer(int id, string n, string e, string p) : User(id, n, e, p) {}
+    
+    string getRoleName() const override { return "Trainer"; }
 };
 
 class Admin : public User {
 public:
-    Admin(int id, string name, string email, string password, string phone)
-        : User(id, name, email, password, ADMIN, phone) {}
-
-    void printRole() const override { cout << "Admin"; }
+    Admin(int id, string n, string e, string p) : User(id, n, e, p) {}
+    
+    string getRoleName() const override { return "Administrator"; }
 };
+
+// --- Pattern: Factory Method (OCP - Open/Closed Principle) ---
+
+enum UserType { CLIENT_TYPE, TRAINER_TYPE, ADMIN_TYPE };
+
+/**
+ * @brief Фабрика для створення користувачів.
+ * Ізолює логіку створення об'єктів від бізнес-логіки.
+ */
+class UserFactory {
+public:
+    static unique_ptr<User> createUser(UserType type, int id, string name, string email, string password) {
+        switch (type) {
+            case CLIENT_TYPE: return make_unique<Client>(id, name, email, password);
+            case TRAINER_TYPE: return make_unique<Trainer>(id, name, email, password);
+            case ADMIN_TYPE: return make_unique<Admin>(id, name, email, password);
+            default: throw runtime_error("Unknown user type");
+        }
+    }
+};
+
+// --- Бізнес-логіка ---
 
 class Session {
 private:
     int id;
-    string name;
-    string trainerName;
-    string datetime;
+    string title;
     int maxSpots;
     int bookedSpots;
 
 public:
-    Session(int id, string name, string trainer, string date, int capacity)
-        : id(id), name(name), trainerName(trainer), datetime(date), maxSpots(capacity), bookedSpots(0) {}
+    Session(int id, string title, int capacity) 
+        : id(id), title(title), maxSpots(capacity), bookedSpots(0) {}
 
     int getId() const { return id; }
-    string getName() const { return name; }
-    
-    bool hasSpace() const {
-        return bookedSpots < maxSpots;
+    string getTitle() const { return title; }
+
+    bool book() {
+        if (bookedSpots < maxSpots) {
+            bookedSpots++;
+            return true;
+        }
+        return false;
     }
 
-    void bookSpot() {
-        if (hasSpace()) bookedSpots++;
-    }
-
-    void display() const {
-        cout << "ID: " << id << " | " << name << " (" << trainerName << ") | Date: " << datetime 
-             << " | Spots: " << (maxSpots - bookedSpots) << "/" << maxSpots << endl;
+    string getInfo() const {
+        return title + " (" + to_string(bookedSpots) + "/" + to_string(maxSpots) + ")";
     }
 };
 
-class Booking {
-private:
-    int id;
-    int userId;
-    int sessionId;
-
+/**
+ * @brief Сервіс бронювання.
+ * Відповідає ЛИШЕ за логіку бронювання (SRP).
+ */
+class BookingService {
 public:
-    Booking(int id, int uId, int sId) : id(id), userId(uId), sessionId(sId) {}
+    void bookSession(User& user, Session& session) {
+        if (session.book()) {
+            // Успіх: сповіщаємо користувача (використання Observer)
+            user.update("Booking confirmed for session: " + session.getTitle());
+        } else {
+            // Невдача
+            user.update("Booking failed. Session " + session.getTitle() + " is full.");
+        }
+    }
 };
 
+/**
+ * @brief Головний контролер системи (Façade for the logic).
+ */
 class GymSystem {
 private:
-    vector<User*> users;
+    vector<shared_ptr<User>> users; // Використовуємо shared_ptr для зручного керування життям об'єктів
     vector<Session> sessions;
-    vector<Booking> bookings;
-    
-    User* currentUser;
-    
+    BookingService bookingService;
     int userIdCounter = 1;
-    int sessionIdCounter = 1;
-    int bookingIdCounter = 1;
 
 public:
-    GymSystem() : currentUser(nullptr) {}
-
-    ~GymSystem() {
-        for (User* u : users) {
-            delete u;
-        }
-        users.clear();
+    // Реєстрація через Фабрику
+    void registerUser(UserType type, string name, string email, string password) {
+        auto newUser = UserFactory::createUser(type, userIdCounter++, name, email, password);
+        users.push_back(move(newUser));
+        cout << "System: Registered " << name << endl;
     }
 
-    void registerUser(string name, string email, string password, Role role, string phone) {
-        User* newUser = nullptr;
-        
-        switch (role) {
-            case CLIENT: newUser = new Client(userIdCounter++, name, email, password, phone); break;
-            case TRAINER: newUser = new Trainer(userIdCounter++, name, email, password, phone); break;
-            case ADMIN: newUser = new Admin(userIdCounter++, name, email, password, phone); break;
-        }
-
-        if (newUser) {
-            users.push_back(newUser);
-            cout << "[Registration]: ";
-            newUser->printRole();
-            cout << " " << name << " successfully added." << endl;
-        }
-    }
-
-    bool login(string email, string password) {
-        auto it = find_if(users.begin(), users.end(), [&](User* u) {
-            return u->getEmail() == email && u->checkPassword(password);
+    shared_ptr<User> login(string email, string password) {
+        auto it = find_if(users.begin(), users.end(), [&](const shared_ptr<User>& u) {
+            return u->getEmail() == email && u->verifyPassword(password);
         });
 
         if (it != users.end()) {
-            currentUser = *it;
-            cout << "\n[Login]: Welcome, " << currentUser->getName() << "!" << endl;
-            return true;
-        } else {
-            cout << "\n[Error]: Invalid email or password." << endl;
-            return false;
+            cout << "System: Welcome back, " << (*it)->getName() << " (" << (*it)->getRoleName() << ")" << endl;
+            return *it;
         }
+        cout << "System: Login failed." << endl;
+        return nullptr;
     }
 
-    void logout() {
-        if (currentUser) {
-            cout << "[Logout]: Goodbye, " << currentUser->getName() << ".\n" << endl;
-            currentUser = nullptr;
-        }
+    void addSession(string title, int capacity) {
+        sessions.emplace_back(sessions.size() + 1, title, capacity);
     }
 
-    void buyMembership(string type) {
-        if (currentUser && currentUser->getRole() == CLIENT) {
-            Client* client = static_cast<Client*>(currentUser);
-            client->membership.activate(type, {31, 12, 2025});
-        } else {
-            cout << "[Error]: Only clients can buy memberships." << endl;
+    // Демонстрація роботи
+    void showSessions() const {
+        cout << "\n--- Available Sessions ---" << endl;
+        for (const auto& s : sessions) {
+            cout << s.getInfo() << endl;
         }
+        cout << "--------------------------\n" << endl;
     }
 
-    void addSession(string name, string date, int capacity) {
-        if (currentUser && (currentUser->getRole() == TRAINER || currentUser->getRole() == ADMIN)) {
-            sessions.push_back(Session(sessionIdCounter++, name, currentUser->getName(), date, capacity));
-            cout << "[Schedule]: Session '" << name << "' added." << endl;
-        } else {
-            cout << "[Error]: Insufficient permissions." << endl;
+    // Отримання сесії за індексом (для тесту)
+    Session* getSessionByIndex(int index) {
+        if (index >= 0 && index < sessions.size()) {
+            return &sessions[index];
         }
+        return nullptr;
     }
-
-    void viewSchedule() {
-        cout << "\n--- CURRENT SCHEDULE ---" << endl;
-        if (sessions.empty()) {
-            cout << "Schedule is empty." << endl;
-        } else {
-            for (const auto& s : sessions) {
-                s.display();
-            }
-        }
-        cout << "------------------------" << endl;
-    }
-
-    void bookSession(int sessionId) {
-        if (!currentUser || currentUser->getRole() != CLIENT) {
-            cout << "[Error]: Only clients can book." << endl;
-            return;
-        }
-
-        Client* client = static_cast<Client*>(currentUser);
-        if (!client->membership.getIsActive()) {
-            cout << "[Error]: No active membership!" << endl;
-            return;
-        }
-
-        auto it = find_if(sessions.begin(), sessions.end(), [&](Session& s) {
-            return s.getId() == sessionId;
-        });
-
-        if (it != sessions.end()) {
-            if (it->hasSpace()) {
-                it->bookSpot();
-                bookings.push_back(Booking(bookingIdCounter++, client->getId(), sessionId));
-                cout << "[Booking]: Successfully booked '" << it->getName() << "'." << endl;
-            } else {
-                cout << "[Error]: No spots available." << endl;
-            }
-        } else {
-            cout << "[Error]: Session with ID " << sessionId << " not found." << endl;
-        }
-    }
-
-    void generateReport() {
-        if (currentUser && currentUser->getRole() == ADMIN) {
-            cout << "\n=== ADMIN REPORT ===" << endl;
-            cout << "Total users: " << users.size() << endl;
-            cout << "Total sessions: " << sessions.size() << endl;
-            cout << "Total bookings: " << bookings.size() << endl;
-            cout << "====================" << endl;
-        } else {
-            cout << "[Error]: Access denied." << endl;
-        }
+    
+    // Доступ до сервісу бронювання (Dependency Injection ready)
+    BookingService& getBookingService() {
+        return bookingService;
     }
 };
 
+// --- Main ---
+
 int main() {
-    GymSystem system;
+    GymSystem gym;
 
-    cout << "--- 1. REGISTRATION ---" << endl;
-    system.registerUser("Ivan Admin", "admin", "1111", ADMIN, "000");
-    system.registerUser("Peter Trainer", "coach", "2222", TRAINER, "123");
-    system.registerUser("Oleg Client", "client", "3333", CLIENT, "456");
+    // 1. Реєстрація (Використання Factory Pattern всередині)
+    gym.registerUser(ADMIN_TYPE, "Ivan Admin", "admin@gym.com", "admin123");
+    gym.registerUser(TRAINER_TYPE, "Petro Coach", "coach@gym.com", "fit123");
+    gym.registerUser(CLIENT_TYPE, "Oleg Client", "oleg@gmail.com", "pass123");
 
-    if (system.login("coach", "2222")) {
-        system.addSession("Yoga", "12.12.2025 10:00", 2);
-        system.addSession("Boxing", "12.12.2025 18:00", 10);
-        system.logout();
+    // 2. Створення контенту
+    gym.addSession("Yoga Morning", 2);
+    gym.addSession("Hardcore CrossFit", 1); // Тільки 1 місце
+
+    // 3. Авторизація
+    auto currentUser = gym.login("oleg@gmail.com", "pass123");
+
+    if (currentUser) {
+        gym.showSessions();
+
+        // 4. Логіка бронювання (Використання Observer Pattern для сповіщення)
+        Session* sessionToBook = gym.getSessionByIndex(1); // CrossFit
+        
+        if (sessionToBook) {
+            // Поліморфний виклик: неважливо, хто саме бронює, головне що це User
+            gym.getBookingService().bookSession(*currentUser, *sessionToBook);
+        }
+        
+        // Спроба забронювати те саме заняття іншим юзером (імітація)
+        cout << "\n(Another user tries to book the same full session...)" << endl;
+        auto anotherUser = gym.login("coach@gym.com", "fit123"); // Тренер теж хоче потренуватися
+        if(anotherUser && sessionToBook) {
+             gym.getBookingService().bookSession(*anotherUser, *sessionToBook);
+        }
     }
 
-    if (system.login("client", "3333")) {
-        system.viewSchedule();
-
-        cout << "\n(Attempting to book without membership):" << endl;
-        system.bookSession(1); 
-
-        cout << "\n(Buying membership):" << endl;
-        system.buyMembership("Gold Gym Pass");
-
-        cout << "\n(Booking again):" << endl;
-        system.bookSession(1); 
-        system.bookSession(2); 
-        
-        system.viewSchedule();
-        
-        system.logout();
-    }
-
-    if (system.login("admin", "1111")) {
-        system.generateReport();
-        system.logout();
+    // 5. Демонстрація специфічної поведінки (LSP/ISP check)
+    // Ми перевіряємо тип динамічно, щоб викликати специфічний метод, 
+    // не засмічуючи базовий інтерфейс User непотрібними методами.
+    if (auto client = dynamic_pointer_cast<Client>(currentUser)) {
+        cout << "\nSpecific Client Action:" << endl;
+        client->buyMembership("Gold Pass");
     }
 
     return 0;
