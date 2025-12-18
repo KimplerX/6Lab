@@ -6,7 +6,6 @@
 #include <iostream>
 #include "Enums.h"
 
-// Клас, що відповідає за абонемент (SRP: тільки дані про підписку)
 class Membership {
     int id;
     MembershipType type;
@@ -15,7 +14,7 @@ class Membership {
 
 public:
     Membership(int id, MembershipType type) : id(id), type(type), isActive(true) {
-        // Логіка: термін дії +30 днів від створення
+        // Термін дії: поточний час + 30 днів
         expireDate = std::time(nullptr) + (30 * 24 * 60 * 60);
     }
 
@@ -23,19 +22,16 @@ public:
         return isActive && std::time(nullptr) < expireDate; 
     }
     
-    // Призупинення абонементу (UseCase: Призупинення)
+    // Метод призупинення (подовжує термін)
     void suspend(int days) {
         if (!isActive) return;
-        // Проста імітація: подовжуємо дату, але логічно вважаємо неактивним на час паузи
-        // Тут для спрощення просто додаємо дні до кінця терміну
         expireDate += (days * 24 * 60 * 60);
-        std::cout << "[System] Membership suspended. Expiration date extended by " << days << " days.\n";
+        std::cout << "[System] Membership extended by " << days << " days.\n";
     }
 
     int getId() const { return id; }
 };
 
-// Клас заняття (SRP: дані про конкретне тренування)
 class Session {
     int id;
     std::string name;
@@ -49,9 +45,9 @@ public:
 
     bool hasSpace() const { return bookedSpots < maxSpots; }
     
-    void bookSpot() {
-        if (hasSpace()) bookedSpots++;
-    }
+    void bookSpot() { if (hasSpace()) bookedSpots++; }
+    
+    void cancelSpot() { if (bookedSpots > 0) bookedSpots--; }
 
     int getId() const { return id; }
     std::string getName() const { return name; }
