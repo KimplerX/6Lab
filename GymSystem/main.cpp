@@ -1,54 +1,80 @@
 #include <iostream>
 #include <memory>
 #include <string>
+#include <ctime>     // Для srand
+#include <cstdlib>   // Для rand
 #include "UserFactory.h"
 #include "Services.h"
 #include "IPaymentStrategy.h"
 #include "AuthService.h" 
 
 int main() {
-    // Ініціалізація сервісів (вони живуть весь час роботи програми)
+    srand(time(0)); // Ініціалізація генератора випадкових чисел
+
+    // Ініціалізація сервісів
     GymService gymService;
     AuthService authService;
     BookingManager bookingManager;
     SalesManager salesManager;
-    RequestManager requestManager; // Зберігає заявки між логінами
+    RequestManager requestManager;
 
-    // --- SEED DATA (Початкові дані) ---
+    // --- SEED DATA (Тестові дані) ---
     gymService.addSession(std::make_shared<Session>(101, "Yoga", "Elena", 10));
     gymService.addSession(std::make_shared<Session>(102, "Boxing", "Tyson", 2));
 
-    // Реєстрація користувачів
-    authService.registerUser(Role::CLIENT, 1, "Alex", "alex", "123");
+    // Додаємо адміна та тренера (звичайні користувачі можуть реєструватися самі)
     authService.registerUser(Role::TRAINER, 2, "Coach John", "coach", "123");
     authService.registerUser(Role::ADMIN, 3, "Admin User", "admin", "123");
 
-    // Купимо клієнту Alex абонемент заздалегідь (для зручності тестування)
-    auto alexUser = authService.login("alex", "123");
-    if(auto alexClient = std::dynamic_pointer_cast<Client>(alexUser)) {
-        alexClient->setMembership(std::make_shared<Membership>(999, MembershipType::PREMIUM));
-    }
+    // Змінна для генерації ID нових користувачів
+    int nextUserId = 100;
 
     bool systemRunning = true;
 
     while (systemRunning) {
-        std::cout << "\n=== GYM SYSTEM LOGIN ===\n";
-        std::string email, pass;
+        std::cout << "\n=== GYM SYSTEM WELCOME ===\n";
         std::shared_ptr<User> currentUser = nullptr;
 
         while (!currentUser) {
-            std::cout << "Email: "; std::cin >> email;
-            if (email == "exit") { systemRunning = false; break; } // "Секретний" вихід
-            std::cout << "Pass: "; std::cin >> pass;
+            std::cout << "1. Login\n";
+            std::cout << "2. Register (New Client)\n";
+            std::cout << "3. Exit System\n> ";
             
-            currentUser = authService.login(email, pass);
-            if (!currentUser) std::cout << "Invalid credentials.\n";
+            int startChoice;
+            std::cin >> startChoice;
+
+            if (startChoice == 1) {
+                // --- ЛОГІН ---
+                std::string email, pass;
+                std::cout << "Email: "; std::cin >> email;
+                std::cout << "Pass: "; std::cin >> pass;
+                
+                currentUser = authService.login(email, pass);
+                if (!currentUser) std::cout << "Invalid credentials.\n";
+
+            } else if (startChoice == 2) {
+                // --- РЕЄСТРАЦІЯ ---
+                std::string name, email, pass;
+                std::cout << "Enter Name: "; std::cin >> name;
+                std::cout << "Enter Email: "; std::cin >> email;
+                std::cout << "Create Password: "; std::cin >> pass;
+
+                // Реєструємо як Клієнта (Role::CLIENT)
+                authService.registerUser(Role::CLIENT, nextUserId++, name, email, pass);
+                std::cout << "Registration Successful! Please login now.\n";
+                
+            } else if (startChoice == 3) {
+                systemRunning = false;
+                break;
+            }
         }
 
         if (!systemRunning) break;
 
         std::cout << "\nWelcome, " << currentUser->getName() << "!\n";
 
+        // --- ДАЛІ ЙДЕ ВАШЕ СТАНДАРТНЕ МЕНЮ (без змін) ---
+        
         // --- МЕНЮ КЛІЄНТА ---
         if (currentUser->getRole() == Role::CLIENT) {
             auto client = std::dynamic_pointer_cast<Client>(currentUser);
@@ -56,7 +82,7 @@ int main() {
             while (choice != 7) {
                 std::cout << "\n--- CLIENT MENU ---\n";
                 std::cout << "1. Dashboard & History\n2. Buy Membership\n3. Schedule\n";
-                std::cout << "4. Book Class\n5. Cancel Booking\n6. Request Suspension (Ask Admin)\n7. Logout\n> ";
+                std::cout << "4. Book Class\n5. Cancel Booking\n6. Request Suspension\n7. Logout\n> ";
                 std::cin >> choice;
 
                 if (choice == 1) { client->displayDashboard(); client->showHistory(); }
@@ -81,7 +107,7 @@ int main() {
                 else if (choice == 6) {
                     if(client->hasActiveMembership()) {
                         int d; std::cout << "Days to suspend: "; std::cin >> d;
-                        requestManager.submitRequest(client, d); // Відправка заявки
+                        requestManager.submitRequest(client, d);
                     } else std::cout << "No active membership.\n";
                 }
             }
@@ -93,10 +119,8 @@ int main() {
                 std::string role = (currentUser->getRole() == Role::ADMIN) ? "ADMIN" : "TRAINER";
                 std::cout << "\n--- STAFF MENU (" << role << ") ---\n";
                 std::cout << "1. Add Session\n2. Show Schedule\n";
-                
                 if (currentUser->getRole() == Role::ADMIN) std::cout << "3. Admin Panel (Reports & Requests)\n";
                 else std::cout << "3. (Admin Only)\n";
-                
                 std::cout << "4. Logout\n> ";
                 std::cin >> choice;
 
@@ -112,7 +136,7 @@ int main() {
                         std::cout << "a. Generate Report\nb. Process Requests\n> ";
                         char sub; std::cin >> sub;
                         if(sub == 'a') { ReportGenerator rg; rg.generateReport(gymService); }
-                        else if(sub == 'b') { requestManager.processRequests(); } // Обробка заявок
+                        else if(sub == 'b') { requestManager.processRequests(); }
                     } else std::cout << "Access Denied.\n";
                 }
             }
